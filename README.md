@@ -14,8 +14,17 @@
 ## 🎨 Overview
 **AI Analyst** is a high-performance, full-stack application that transforms static PDF documents into interactive intelligence. Built with a **Glassmorphism design system**, it offers a premium user experience for chatting with documents, performing visual data analysis, and monitoring ML model performance.
 
+![Home Page](frontend/public/screenshots/home.png)
+
 > [!IMPORTANT]
 > This project implements a full **RAG (Retrieval-Augmented Generation)** pipeline with an integrated **Code Interpreter** for real-time data science visualizations.
+
+### 📸 Application Preview
+<div align="center">
+  <img src="frontend/public/screenshots/features.png" width="48%" />
+  <img src="frontend/public/screenshots/login.png" width="48%" />
+  <img src="frontend/public/screenshots/chat_active.png" width="100%" />
+</div>
 
 ---
 
