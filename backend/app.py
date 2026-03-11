@@ -155,6 +155,13 @@ def upload_file(current_user):
             text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
             chunks = text_splitter.split_documents(documents)
             
+            # Guard: don't embed if PDF has no extractable text
+            if not chunks:
+                return jsonify({
+                    'error': f'No text could be extracted from "{filename}". '
+                             'It may be a scanned/image-only PDF. Please use a text-based PDF.'
+                }), 400
+
             # Embed and store
             global vector_store
             if vector_store is None:
