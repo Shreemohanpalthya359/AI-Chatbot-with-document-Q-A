@@ -69,29 +69,36 @@ Based on our latest evaluation with a sample set of **64 document chunks** acros
 graph TD
     subgraph "Frontend (React + Vite)"
         UI["Glassmorphism UI"]
-        CH["Chat Sidebar"]
+        AUTH["Auth Controller (JWT)"]
+        CH["Chat Workspace"]
         DB["Analytics Dashboard"]
     end
 
     subgraph "Backend (Flask API)"
         API["Flask Server"]
+        MW["Auth Middleware"]
         RAG["RAG Engine"]
         CI["Python Code Interpreter"]
         TRAIN["ML Trainer (SVM/XGBoost)"]
     end
 
-    subgraph "Storage & Intelligence"
-        PG["PostgreSQL (History/Docs)"]
-        CHROMA["ChromaDB (Vector Store)"]
+    subgraph "Persistence Layer"
+        PG["PostgreSQL (Users/History/Runs)"]
+        CHROMA["ChromaDB (Persistent Vectors)"]
+    end
+
+    subgraph "AI Intelligence"
         GROQ["Groq Cloud (LLM/Vision)"]
         HF["HuggingFace (Embeddings)"]
     end
 
-    UI <--> API
-    API --> PG
-    API --> RAG
-    API --> CI
-    API --> TRAIN
+    UI <--> AUTH
+    AUTH <--> API
+    API --> MW
+    MW --> PG
+    MW --> RAG
+    MW --> CI
+    MW --> TRAIN
     RAG --> CHROMA
     RAG --> GROQ
     API --> GROQ
@@ -100,31 +107,41 @@ graph TD
 
 ---
 
-## 🔄 Project Flow (RAG + Analysis)
+## 🔄 Project Flows
 
+### 1. Security & Authentication Flow
 ```mermaid
 sequenceDiagram
     participant U as User
-    participant F as Frontend
+    participant F as Auth Utility
+    participant B as Flask API
+    participant D as PostgreSQL
+
+    U->>F: Enter Credentials
+    F->>B: POST /api/login
+    B->>D: Check hashed_pw
+    D-->>B: User Verified
+    B->>F: Return JWT (24h expiry)
+    F->>F: Store in localStorage
+    Note over F,B: All subsequent requests use Bearer Token
+```
+
+### 2. RAG + Code Execution Flow
+```mermaid
+sequenceDiagram
+    participant U as User
     participant B as Backend
-    participant V as Vector DB
+    participant V as ChromaDB
     participant L as LLM (Groq)
 
-    U->>F: Upload PDF
-    F->>B: POST /api/upload
-    B->>B: Chunk & Embed
-    B->>V: Save Chunks
-    B->>F: Upload Success
-    
-    U->>F: "Draw a chart of the sales data"
-    F->>B: POST /api/chat
-    B->>V: Search Similar Chunks
-    V->>B: Context Found
+    U->>B: "Visualize PDF data"
+    B->>B: Verify JWT Token
+    B->>V: Search Vectors
+    V->>B: Return Context
     B->>L: Context + Prompt
-    L->>B: Python Code + Explanation
-    B->>B: Execute Code (Plotting)
-    B->>F: Response JSON (URL + Text)
-    F->>U: Display Plot + Explanation
+    L->>B: return [PYTHON] code
+    B->>B: exec() in Secure Env
+    B->>U: Send Plot URL + Summary
 ```
 
 ---
