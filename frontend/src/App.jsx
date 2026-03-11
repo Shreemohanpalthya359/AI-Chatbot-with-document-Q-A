@@ -4,6 +4,7 @@ import LandingPage from './pages/LandingPage';
 import ChatWorkspace from './pages/ChatWorkspace';
 import Dashboard from './pages/Dashboard';
 import Auth from './pages/Auth';
+import UserProfile from './pages/UserProfile';
 
 const ProtectedRoute = ({ children, token }) => {
   if (!token) {
@@ -45,6 +46,14 @@ function App() {
         element={
           <ProtectedRoute token={token}>
             <Dashboard onLogout={handleLogout} />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/profile" 
+        element={
+          <ProtectedRoute token={token}>
+            <UserProfile onLogout={handleLogout} />
           </ProtectedRoute>
         } 
       />

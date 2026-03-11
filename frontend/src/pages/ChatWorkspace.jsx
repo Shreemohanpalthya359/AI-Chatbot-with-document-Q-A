@@ -269,7 +269,14 @@ function ChatWorkspace({ onLogout }) {
             </label>
           </div>
           
-          <div className="mt-8 pt-6 border-t border-white/5 space-y-4">
+          <div className="mt-8 pt-6 border-t border-white/5 space-y-2">
+            <button
+               onClick={() => navigate('/profile')}
+               className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-teal-500/10 hover:bg-teal-500/20 text-teal-400 border border-teal-500/20 transition-all group"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+              <span className="font-semibold text-sm">My Profile</span>
+            </button>
             <button
                onClick={onLogout}
                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-all group"

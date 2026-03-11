@@ -73,8 +73,13 @@ def init_db():
                 id            SERIAL PRIMARY KEY,
                 email         TEXT UNIQUE NOT NULL,
                 password_hash TEXT NOT NULL,
+                name          TEXT DEFAULT '',
                 created_at    TIMESTAMP DEFAULT NOW()
             );
+        """)
+        # Add name column to users if it doesn't exist (safe migration)
+        cur.execute("""
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS name TEXT DEFAULT '';
         """)
     print("[DB] Tables ready.")
 

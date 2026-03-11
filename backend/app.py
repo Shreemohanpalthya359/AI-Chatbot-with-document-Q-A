@@ -547,6 +547,61 @@ def get_training_runs(current_user):
         return jsonify({'error': str(e)}), 500
 
 
+
+@app.route('/api/profile', methods=['GET'])
+@token_required
+def get_profile(current_user):
+    """Returns the current user's profile data."""
+    try:
+        # Aggregate stats for the user
+        docs = db.get_documents()
+        runs = db.get_training_runs()
+        messages = db.get_recent_messages(limit=1000)
+
+        return jsonify({
+            'user': {
+                'id': current_user['id'],
+                'email': current_user['email'],
+                'created_at': current_user['created_at'].isoformat() if current_user.get('created_at') else None,
+                'name': current_user.get('name', current_user['email'].split('@')[0]),
+            },
+            'stats': {
+                'documents_uploaded': len(docs),
+                'training_runs': len(runs),
+                'messages_sent': len([m for m in messages if m['role'] == 'human']),
+                'best_accuracy': max([r['best_accuracy'] for r in runs], default=0),
+            }
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/profile/update', methods=['PUT'])
+@token_required
+def update_profile(current_user):
+    """Updates the user's name and/or password."""
+    data = request.json
+    new_name = data.get('name')
+    new_password = data.get('new_password')
+    current_password = data.get('current_password')
+
+    try:
+        conn = db.get_connection()
+        with conn.cursor() as cur:
+            if new_name:
+                cur.execute("UPDATE users SET name = %s WHERE id = %s;", (new_name, current_user['id']))
+
+            if new_password and current_password:
+                if not bcrypt.checkpw(current_password.encode('utf-8'), current_user['password_hash'].encode('utf-8')):
+                    return jsonify({'error': 'Current password is incorrect'}), 400
+                new_hash = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+                cur.execute("UPDATE users SET password_hash = %s WHERE id = %s;", (new_hash, current_user['id']))
+
+        return jsonify({'message': 'Profile updated successfully'}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 if __name__ == '__main__':
     print("Starting Flask server on http://0.0.0.0:5001")
     app.run(host='0.0.0.0', port=5001, debug=False)
