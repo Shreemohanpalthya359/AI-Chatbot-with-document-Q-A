@@ -14,17 +14,28 @@
 ## 🎨 Overview
 **AI Analyst** is a high-performance, full-stack application that transforms static PDF documents into interactive intelligence. Built with a **Glassmorphism design system**, it offers a premium user experience for chatting with documents, performing visual data analysis, and monitoring ML model performance.
 
-![Home Page](frontend/public/screenshots/home.png)
-
-> [!IMPORTANT]
-> This project implements a full **RAG (Retrieval-Augmented Generation)** pipeline with an integrated **Code Interpreter** for real-time data science visualizations.
-
 ### 📸 Application Preview
+
+#### 🏠 Landing Page & Brand Identity
+![Home Page](frontend/public/screenshots/home.png)
+*The **NexusAI** home page features a stunning dark-mode aesthetic with glassmorphism elements, providing a high-performance entry point into the workspace.*
+
 <div align="center">
-  <img src="frontend/public/screenshots/features.png" width="48%" />
-  <img src="frontend/public/screenshots/login.png" width="48%" />
-  <img src="frontend/public/screenshots/chat_active.png" width="100%" />
+  <div style="display: flex; justify-content: space-between;">
+    <div style="width: 48%;">
+      <img src="frontend/public/screenshots/features.png" width="100%" />
+      <p><b>✨ Core Capabilities</b><br>Overview of the RAG pipeline, Vision analysis, and Automated ML training modules.</p>
+    </div>
+    <div style="width: 48%;">
+      <img src="frontend/public/screenshots/login.png" width="100%" />
+      <p><b>🔐 Secure Portal</b><br>JWT-based authentication system ensuring private and secure access to your documents.</p>
+    </div>
+  </div>
 </div>
+
+#### 💬 Intelligence Workspace (Active RAG)
+![Active Chat](frontend/public/screenshots/chat_active.png)
+*The core chat workspace in action: Here, the AI Analyst is summarizing a complex PDF and generating an interactive data visualization in real-time.*
 
 ---
 
