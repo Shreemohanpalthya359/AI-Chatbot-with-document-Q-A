@@ -155,18 +155,41 @@ def upload_file(current_user):
             text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
             chunks = text_splitter.split_documents(documents)
             
-            # Guard: don't embed if PDF has no extractable text
+            # If no text found, try OCR fallback for scanned/image-only PDFs
             if not chunks:
-                return jsonify({
-                    'error': f'No text could be extracted from "{filename}". '
-                             'It may be a scanned/image-only PDF. Please use a text-based PDF.'
-                }), 400
+                print(f"[Upload] No text from PyPDFLoader — attempting OCR for {filename}")
+                try:
+                    from pdf2image import convert_from_path
+                    import pytesseract
+                    from langchain.schema import Document
+
+                    images = convert_from_path(tmp_path, dpi=200)
+                    ocr_text = ""
+                    for i, img in enumerate(images):
+                        page_text = pytesseract.image_to_string(img)
+                        ocr_text += f"\n--- Page {i+1} ---\n{page_text}"
+
+                    if ocr_text.strip():
+                        ocr_doc = Document(
+                            page_content=ocr_text.strip(),
+                            metadata={"source": filename, "extraction": "ocr"}
+                        )
+                        chunks = text_splitter.split_documents([ocr_doc])
+                        print(f"[Upload] OCR produced {len(chunks)} chunks from {filename}")
+                    else:
+                        return jsonify({
+                            'error': f'Could not extract any text from "{filename}" even with OCR. '
+                                     'The PDF may be blank or too low quality.'
+                        }), 400
+                except Exception as ocr_err:
+                    print(f"[Upload] OCR error: {ocr_err}")
+                    return jsonify({'error': f'OCR failed for "{filename}": {str(ocr_err)}'}), 400
 
             # Embed and store
             global vector_store
             if vector_store is None:
                 init_vectorstore()
-                
+
             vector_store.add_documents(chunks)
 
             # Save only metadata to PostgreSQL — the source file is NOT kept
@@ -174,8 +197,9 @@ def upload_file(current_user):
                 db.save_document(filename, "in-memory", len(chunks), user_id=current_user['id'])
             except Exception as db_err:
                 print(f"[DB] Could not save document metadata: {db_err}")
-            
-            return jsonify({'message': f'Successfully processed {len(chunks)} embedded chunks from {filename}.'}), 200
+
+            method = "OCR" if chunks and chunks[0].metadata.get("extraction") == "ocr" else "text"
+            return jsonify({'message': f'Successfully processed {len(chunks)} chunks from {filename} (via {method} extraction).'}), 200
         except Exception as e:
             return jsonify({'error': str(e)}), 500
         finally:
