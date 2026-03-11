@@ -60,7 +60,7 @@ const Auth = ({ setToken }) => {
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-6" autoComplete="off">
             <div className="space-y-4">
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -69,6 +69,7 @@ const Auth = ({ setToken }) => {
                   required
                   placeholder="Email Address"
                   value={email}
+                  autoComplete="off"
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-11 pr-4 text-white focus:outline-none focus:ring-2 focus:ring-teal-500 transition-all"
                 />
@@ -80,6 +81,7 @@ const Auth = ({ setToken }) => {
                   required
                   placeholder="Password"
                   value={password}
+                  autoComplete="new-password"
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-11 pr-4 text-white focus:outline-none focus:ring-2 focus:ring-teal-500 transition-all"
                 />
@@ -115,7 +117,7 @@ const Auth = ({ setToken }) => {
             <div className="text-center">
               <button
                 type="button"
-                onClick={() => setIsLogin(!isLogin)}
+                onClick={() => { setIsLogin(!isLogin); setEmail(''); setPassword(''); setError(''); }}
                 className="text-teal-400 hover:text-teal-300 text-sm font-medium transition-colors"
               >
                 {isLogin 
