@@ -140,12 +140,16 @@ def upload_file(current_user):
         
     if file and file.filename.endswith('.pdf'):
         filename = secure_filename(file.filename)
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(filepath)
+
+        # Save to a temp file — process in memory, never persist to uploads/
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp:
+            file.save(tmp.name)
+            tmp_path = tmp.name
         
         try:
-            # Load and split
-            loader = PyPDFLoader(filepath)
+            # Load and split from temp file
+            loader = PyPDFLoader(tmp_path)
             documents = loader.load()
             
             text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
@@ -158,15 +162,22 @@ def upload_file(current_user):
                 
             vector_store.add_documents(chunks)
 
-            # Persist document metadata to PostgreSQL
+            # Save only metadata to PostgreSQL — the source file is NOT kept
             try:
-                db.save_document(filename, filepath, len(chunks))
+                db.save_document(filename, "in-memory", len(chunks))
             except Exception as db_err:
                 print(f"[DB] Could not save document metadata: {db_err}")
             
             return jsonify({'message': f'Successfully processed {len(chunks)} embedded chunks from {filename}.'}), 200
         except Exception as e:
             return jsonify({'error': str(e)}), 500
+        finally:
+            # Always delete the temp file after processing
+            try:
+                os.remove(tmp_path)
+                print(f"[Upload] Temp file deleted: {tmp_path}")
+            except Exception:
+                pass
     else:
         return jsonify({'error': 'Only PDF files are supported'}), 400
 
