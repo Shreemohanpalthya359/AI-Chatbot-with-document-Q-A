@@ -164,7 +164,7 @@ def upload_file(current_user):
 
             # Save only metadata to PostgreSQL — the source file is NOT kept
             try:
-                db.save_document(filename, "in-memory", len(chunks))
+                db.save_document(filename, "in-memory", len(chunks), user_id=current_user['id'])
             except Exception as db_err:
                 print(f"[DB] Could not save document metadata: {db_err}")
             
@@ -530,7 +530,7 @@ def get_history(current_user):
 def get_documents(current_user):
     """Returns all uploaded documents stored in PostgreSQL."""
     try:
-        docs = db.get_documents()
+        docs = db.get_documents(user_id=current_user['id'])
         return jsonify({'documents': docs, 'count': len(docs)}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -554,7 +554,7 @@ def get_profile(current_user):
     """Returns the current user's profile data."""
     try:
         # Aggregate stats for the user
-        docs = db.get_documents()
+        docs = db.get_documents(user_id=current_user['id'])
         runs = db.get_training_runs()
         messages = db.get_recent_messages(limit=1000)
 

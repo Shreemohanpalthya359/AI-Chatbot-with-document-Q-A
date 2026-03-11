@@ -52,6 +52,7 @@ def init_db():
 
             CREATE TABLE IF NOT EXISTS uploaded_documents (
                 id          SERIAL PRIMARY KEY,
+                user_id     INTEGER REFERENCES users(id) ON DELETE CASCADE,
                 filename    TEXT    NOT NULL,
                 file_path   TEXT    NOT NULL,
                 num_chunks  INTEGER DEFAULT 0,
@@ -80,6 +81,10 @@ def init_db():
         # Add name column to users if it doesn't exist (safe migration)
         cur.execute("""
             ALTER TABLE users ADD COLUMN IF NOT EXISTS name TEXT DEFAULT '';
+        """)
+        # Add user_id to uploaded_documents if not present (safe migration)
+        cur.execute("""
+            ALTER TABLE uploaded_documents ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE;
         """)
     print("[DB] Tables ready.")
 
@@ -136,25 +141,31 @@ def get_recent_messages(limit: int = 50) -> list:
 
 # ── Documents ─────────────────────────────────────────────────────────────────
 
-def save_document(filename: str, file_path: str, num_chunks: int) -> int:
-    """Inserts document metadata and returns the new row ID."""
+def save_document(filename: str, file_path: str, num_chunks: int, user_id: int = None) -> int:
+    """Inserts document metadata (scoped to user) and returns the new row ID."""
     conn = get_connection()
     with conn.cursor() as cur:
         cur.execute(
             """
-            INSERT INTO uploaded_documents (filename, file_path, num_chunks)
-            VALUES (%s, %s, %s) RETURNING id;
+            INSERT INTO uploaded_documents (filename, file_path, num_chunks, user_id)
+            VALUES (%s, %s, %s, %s) RETURNING id;
             """,
-            (filename, file_path, num_chunks)
+            (filename, file_path, num_chunks, user_id)
         )
         return cur.fetchone()[0]
 
 
-def get_documents() -> list:
-    """Returns all uploaded document records."""
+def get_documents(user_id: int = None) -> list:
+    """Returns uploaded document records. If user_id provided, filters to that user only."""
     conn = get_connection()
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-        cur.execute("SELECT * FROM uploaded_documents ORDER BY uploaded_at DESC;")
+        if user_id is not None:
+            cur.execute(
+                "SELECT * FROM uploaded_documents WHERE user_id = %s ORDER BY uploaded_at DESC;",
+                (user_id,)
+            )
+        else:
+            cur.execute("SELECT * FROM uploaded_documents ORDER BY uploaded_at DESC;")
         rows = cur.fetchall()
     result = []
     for row in rows:
