@@ -1,6 +1,14 @@
 import os
+import json
+import time
 import threading
-from flask import Flask, request, jsonify
+import shutil
+import base64
+import jwt
+import bcrypt
+from datetime import datetime, timedelta
+from functools import wraps
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
@@ -26,17 +34,42 @@ load_dotenv()
 app = Flask(__name__)
 CORS(app)
 
-# Configure Groq API Key
+# ─── Config ───────────────────────────────────────────────────────────────────
+load_dotenv()
 api_key = os.getenv("GROQ_API_KEY")
+JWT_SECRET = os.getenv("JWT_SECRET", "fallback-secret-key")
 
-UPLOAD_FOLDER = 'uploads'
+UPLOAD_FOLDER = "uploads"
+EXPORTS_FOLDER = "exports"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-EXPORTS_FOLDER = 'exports'
 os.makedirs(EXPORTS_FOLDER, exist_ok=True)
 
-from flask import send_from_directory
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+# ─── Auth Middleware ─────────────────────────────────────────────────────────
+
+def token_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = None
+        if 'Authorization' in request.headers:
+            auth_header = request.headers['Authorization']
+            if auth_header.startswith('Bearer '):
+                token = auth_header.split(" ")[1]
+
+        if not token:
+            return jsonify({'message': 'Token is missing!'}), 401
+
+        try:
+            data = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+            current_user = db.get_user_by_email(data['email'])
+            if not current_user:
+                return jsonify({'message': 'User not found!'}), 401
+        except Exception as e:
+            return jsonify({'message': 'Token is invalid!', 'error': str(e)}), 401
+
+        return f(current_user, *args, **kwargs)
+    return decorated
 
 @app.route('/exports/<path:filename>')
 def serve_export(filename):
@@ -93,7 +126,8 @@ def _get_or_create_conversation() -> int:
     return _session_conversation_id
 
 @app.route('/api/upload', methods=['POST'])
-def upload_file():
+@token_required
+def upload_file(current_user):
     if not api_key:
         return jsonify({'error': 'GROQ_API_KEY not configured on server'}), 500
 
@@ -215,7 +249,8 @@ def _execute_analysis_code(code: str):
         return str(e)
 
 @app.route('/api/chat', methods=['POST'])
-def chat():
+@token_required
+def chat(current_user):
     if not api_key or vector_store is None:
         return jsonify({'error': 'Server not ready or API key missing'}), 500
 
@@ -305,7 +340,8 @@ from groq import Groq as GroqClient
 ALLOWED_IMAGE_TYPES = {'image/jpeg', 'image/png', 'image/gif', 'image/webp'}
 
 @app.route('/api/analyze-image', methods=['POST'])
-def analyze_image():
+@token_required
+def analyze_image(current_user):
     """
     Accepts an image upload + optional question, and uses Groq's vision model
     (llama-4-scout-17b) to analyze the image content.
@@ -382,7 +418,8 @@ def _run_training_bg():
         training_state["running"] = False
 
 @app.route('/api/train', methods=['POST'])
-def train_models():
+@token_required
+def train_models(current_user):
     """
     Triggers the ML training pipeline on all uploaded PDFs.
     Training output is printed to the terminal.
@@ -418,10 +455,56 @@ def train_status():
     }), 200
 
 
+# ─── Auth Endpoints ──────────────────────────────────────────────────────────
+
+@app.route('/api/register', methods=['POST'])
+def register():
+    data = request.json
+    email = data.get('email')
+    password = data.get('password')
+
+    if not email or not password:
+        return jsonify({'error': 'Email and password required'}), 400
+
+    if db.get_user_by_email(email):
+        return jsonify({'error': 'User already exists'}), 400
+
+    hashed_pw = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    try:
+        db.create_user(email, hashed_pw)
+        return jsonify({'message': 'User registered successfully'}), 201
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/login', methods=['POST'])
+def login():
+    data = request.json
+    email = data.get('email')
+    password = data.get('password')
+
+    if not email or not password:
+        return jsonify({'error': 'Email and password required'}), 400
+
+    user = db.get_user_by_email(email)
+    if not user or not bcrypt.checkpw(password.encode('utf-8'), user['password_hash'].encode('utf-8')):
+        return jsonify({'error': 'Invalid credentials'}), 401
+
+    token = jwt.encode({
+        'user_id': user['id'],
+        'email': user['email'],
+        'exp': datetime.utcnow() + timedelta(hours=24)
+    }, JWT_SECRET, algorithm="HS256")
+
+    return jsonify({
+        'token': token,
+        'user': {'id': user['id'], 'email': user['email']}
+    }), 200
+
 # ─── PostgreSQL Read Endpoints ────────────────────────────────────────────────
 
 @app.route('/api/history', methods=['GET'])
-def get_history():
+@token_required
+def get_history(current_user):
     """Returns recent chat messages stored in PostgreSQL."""
     limit = request.args.get('limit', 50, type=int)
     try:
@@ -432,7 +515,8 @@ def get_history():
 
 
 @app.route('/api/documents', methods=['GET'])
-def get_documents():
+@token_required
+def get_documents(current_user):
     """Returns all uploaded documents stored in PostgreSQL."""
     try:
         docs = db.get_documents()
@@ -442,7 +526,8 @@ def get_documents():
 
 
 @app.route('/api/training-runs', methods=['GET'])
-def get_training_runs():
+@token_required
+def get_training_runs(current_user):
     """Returns all ML training runs stored in PostgreSQL."""
     try:
         runs = db.get_training_runs()

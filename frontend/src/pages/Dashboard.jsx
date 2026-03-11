@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
-import { ArrowLeft, Database, FileText, MessageSquare, Activity } from 'lucide-react';
+import { ArrowLeft, Database, FileText, MessageSquare, Activity, LogOut } from 'lucide-react';
 
 const API = 'http://127.0.0.1:5001';
 
-export default function Dashboard() {
+export default function Dashboard({ onLogout }) {
+  const token = localStorage.getItem('token');
   const [stats, setStats] = useState({
     documents: [],
     messages: [],
@@ -18,12 +19,15 @@ export default function Dashboard() {
 
   const fetchDashboardData = async () => {
     try {
+      const headers = { 'Authorization': `Bearer ${token}` };
       const [docsRes, msgsRes, trainRes, statusRes] = await Promise.all([
-        fetch(`${API}/api/documents`),
-        fetch(`${API}/api/history?limit=100`),
-        fetch(`${API}/api/training-runs`),
-        fetch(`${API}/api/train/status`)
+        fetch(`${API}/api/documents`, { headers }),
+        fetch(`${API}/api/history?limit=100`, { headers }),
+        fetch(`${API}/api/training-runs`, { headers }),
+        fetch(`${API}/api/train/status`, { headers })
       ]);
+
+      if (docsRes.status === 401) return onLogout();
       
       const docs = await docsRes.json();
       const msgs = await msgsRes.json();
@@ -57,7 +61,11 @@ export default function Dashboard() {
   const handleStartTraining = async () => {
     try {
       setIsTraining(true);
-      const res = await fetch(`${API}/api/train`, { method: 'POST' });
+      const res = await fetch(`${API}/api/train`, { 
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.status === 401) return onLogout();
       const data = await res.json();
       if (!res.ok) {
         alert(data.error || "Training failed to start");
@@ -110,6 +118,12 @@ export default function Dashboard() {
           >
             <Activity size={18} className={isTraining ? "animate-pulse" : ""} />
             {isTraining ? "Training in Progress..." : "Run Analytics Training"}
+          </button>
+          <button 
+            onClick={onLogout}
+            className="flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-all"
+          >
+            <LogOut size={16} /> Sign Out
           </button>
           <Link to="/" className="flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 transition-colors">
             <ArrowLeft size={16} /> Home

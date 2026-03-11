@@ -68,6 +68,13 @@ def init_db():
                 results_json  JSONB,
                 trained_at    TIMESTAMP DEFAULT NOW()
             );
+
+            CREATE TABLE IF NOT EXISTS users (
+                id            SERIAL PRIMARY KEY,
+                email         TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                created_at    TIMESTAMP DEFAULT NOW()
+            );
         """)
     print("[DB] Tables ready.")
 
@@ -189,3 +196,24 @@ def get_training_runs() -> list:
         d['trained_at'] = d['trained_at'].isoformat()
         result.append(d)
     return result
+
+
+# ── Users ─────────────────────────────────────────────────────────────────────
+
+def create_user(email: str, password_hash: str) -> int:
+    """Creates a new user and returns their ID."""
+    conn = get_connection()
+    with conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO users (email, password_hash) VALUES (%s, %s) RETURNING id;",
+            (email, password_hash)
+        )
+        return cur.fetchone()[0]
+
+
+def get_user_by_email(email: str) -> dict:
+    """Fetches a user by their email address."""
+    conn = get_connection()
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute("SELECT * FROM users WHERE email = %s;", (email,))
+        return cur.fetchone()

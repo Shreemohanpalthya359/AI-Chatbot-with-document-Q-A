@@ -36,9 +36,30 @@
 - **Live Metrics**: Monitors accuracy, F1-scores, and sample distributions via `Recharts` visualizations.
 - **Document Tracking**: Real-time management of uploaded knowledge bases.
 
+### 5. 🔐 Secure Access
+- **JWT Authentication**: Full user registration and login system.
+- **Protected API**: All data-sensitive endpoints are secured with Bearer tokens.
+- **Session Management**: Persistent sessions with local storage integration.
+
+---
+
 ### 4. 👁️ Vision & Voice
 - **Multi-Modal**: Analyze images and screenshots using Groq's Vision models.
 - **Interactive Audio**: Full **Text-to-Speech (TTS)** support for an eyes-free experience.
+
+---
+
+## 📊 ML Performance Benchmarks
+
+Based on our latest evaluation with a sample set of **64 document chunks** across **3 document classes**:
+
+| Model | Accuracy | F1-Score | Cross-Val Mean | Note |
+| :--- | :--- | :--- | :--- | :--- |
+| **SVM (RBF Kernel)** | **100.0%** | **1.00** | 95.4% | Outstanding for text embeddings |
+| **XGBoost** | 84.6% | 0.81 | 89.1% | High-performance ensemble |
+
+> [!TIP]
+> **SVM** currently outperforms XGBoost in our specific text classification tasks due to its effectiveness in high-dimensional vector spaces created by `all-MiniLM-L6-v2`.
 
 ---
 

@@ -1,11 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Image as ImageIcon, Send, ArrowLeft, Mic, MicOff, Volume2, Square } from 'lucide-react';
+import { Image as ImageIcon, Send, ArrowLeft, Mic, MicOff, Volume2, Square, LogOut } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
 const API = 'http://127.0.0.1:5001';
 
-function ChatWorkspace() {
+function ChatWorkspace({ onLogout }) {
+  const token = localStorage.getItem('token');
   const [messages, setMessages] = useState([
     { id: 1, role: 'bot', text: 'Hello! Upload a PDF to start asking questions, or attach an image to analyze it.' }
   ]);
@@ -108,7 +109,14 @@ function ChatWorkspace() {
     formData.append('file', file);
 
     try {
-      const res  = await fetch(`${API}/api/upload`, { method: 'POST', body: formData });
+      const res  = await fetch(`${API}/api/upload`, { 
+        method: 'POST', 
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData 
+      });
+      
+      if (res.status === 401) return onLogout();
+      
       const data = await res.json();
       setMessages(prev => [...prev, {
         id: Date.now(), role: 'bot',
@@ -165,14 +173,24 @@ function ChatWorkspace() {
         const formData = new FormData();
         formData.append('image', imageToSend.file);
         formData.append('question', userText || 'Describe this image in detail.');
-        res  = await fetch(`${API}/api/analyze-image`, { method: 'POST', body: formData });
+        res  = await fetch(`${API}/api/analyze-image`, { 
+          method: 'POST', 
+          headers: { 'Authorization': `Bearer ${token}` },
+          body: formData 
+        });
+        if (res.status === 401) return onLogout();
         data = await res.json();
       } else {
         // ── RAG chat request ──────────────────────────────────────────────
         res  = await fetch(`${API}/api/chat`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          method: 'POST', 
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
           body: JSON.stringify({ message: userText }),
         });
+        if (res.status === 401) return onLogout();
         data = await res.json();
       }
 
@@ -251,7 +269,14 @@ function ChatWorkspace() {
             </label>
           </div>
           
-          <div className="mt-8 pt-6 border-t border-white/5">
+          <div className="mt-8 pt-6 border-t border-white/5 space-y-4">
+            <button
+               onClick={onLogout}
+               className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-all group"
+            >
+              <LogOut size={18} className="group-hover:-translate-x-1 transition-transform" />
+              <span className="font-semibold text-sm">Sign Out</span>
+            </button>
             <div className="flex items-center gap-2 text-xs text-slate-500 justify-center bg-black/20 py-2 rounded-lg">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
               Powered by Groq & LangChain
