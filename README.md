@@ -57,9 +57,6 @@
 - **Document Tracking**: Real-time management of uploaded knowledge bases.
 - **User Scoped**: Each user sees their own personalized metrics and interaction history.
 
-![Analytics Dashboard](frontend/src/assets/screenshots/analytics_dashboard.png)
-*The centralized hub for monitoring your ML model performance, total interactions, and recently uploaded documents.*
-
 ### 4. 🧑‍💻 User Profiles & Security
 - **Personalized Accounts**: Edit your display name and update your customized avatar.
 - **Account Stats**: View your all-time metrics including total documents, questions asked, and best ML accuracy.
@@ -86,6 +83,9 @@
 ---
 
 ## 📊 ML Performance Benchmarks
+
+![Analytics Dashboard](frontend/src/assets/screenshots/analytics_dashboard.png)
+*Recent dashboard capture showing live model metrics and peak accuracy tracking.*
 
 Based on our latest evaluation with a sample set of **64 document chunks** across **3 document classes**:
 
