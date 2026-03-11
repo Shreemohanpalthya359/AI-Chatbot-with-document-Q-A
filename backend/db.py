@@ -38,6 +38,7 @@ def init_db():
         cur.execute("""
             CREATE TABLE IF NOT EXISTS conversations (
                 id         SERIAL PRIMARY KEY,
+                user_id    INTEGER REFERENCES users(id) ON DELETE CASCADE,
                 created_at TIMESTAMP DEFAULT NOW()
             );
 
@@ -86,16 +87,20 @@ def init_db():
         cur.execute("""
             ALTER TABLE uploaded_documents ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE;
         """)
+        # Add user_id to conversations if not present (safe migration)
+        cur.execute("""
+            ALTER TABLE conversations ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE;
+        """)
     print("[DB] Tables ready.")
 
 
 # ── Conversation ───────────────────────────────────────────────────────────────
 
-def create_conversation() -> int:
-    """Creates a new conversation row and returns its ID."""
+def create_conversation(user_id: int = None) -> int:
+    """Creates a new conversation row (optionally scoped to user) and returns its ID."""
     conn = get_connection()
     with conn.cursor() as cur:
-        cur.execute("INSERT INTO conversations DEFAULT VALUES RETURNING id;")
+        cur.execute("INSERT INTO conversations (user_id) VALUES (%s) RETURNING id;", (user_id,))
         return cur.fetchone()[0]
 
 
@@ -114,23 +119,36 @@ def save_message(conversation_id: int, role: str, content: str, message_type: st
         )
 
 
-def get_recent_messages(limit: int = 50) -> list:
-    """Returns the most recent messages across all conversations."""
+def get_recent_messages(limit: int = 50, user_id: int = None) -> list:
+    """Returns the most recent messages. If user_id provided, filters to that user's conversations."""
     conn = get_connection()
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-        cur.execute(
-            """
-            SELECT m.id, c.id AS conversation_id, m.role, m.content,
-                   m.message_type, m.created_at
-            FROM messages m
-            JOIN conversations c ON m.conversation_id = c.id
-            ORDER BY m.created_at DESC
-            LIMIT %s;
-            """,
-            (limit,)
-        )
+        if user_id is not None:
+            cur.execute(
+                """
+                SELECT m.id, c.id AS conversation_id, m.role, m.content,
+                       m.message_type, m.created_at
+                FROM messages m
+                JOIN conversations c ON m.conversation_id = c.id
+                WHERE c.user_id = %s
+                ORDER BY m.created_at DESC
+                LIMIT %s;
+                """,
+                (user_id, limit)
+            )
+        else:
+            cur.execute(
+                """
+                SELECT m.id, c.id AS conversation_id, m.role, m.content,
+                       m.message_type, m.created_at
+                FROM messages m
+                JOIN conversations c ON m.conversation_id = c.id
+                ORDER BY m.created_at DESC
+                LIMIT %s;
+                """,
+                (limit,)
+            )
         rows = cur.fetchall()
-    # Convert datetime to ISO string for JSON serialization
     result = []
     for row in rows:
         d = dict(row)

@@ -113,17 +113,17 @@ except Exception as e:
     print(f"Warning: Could not connect to PostgreSQL: {e}")
     print("  → Chat history will not be persisted. Is PostgreSQL running?")
 
-# Global conversation ID (one per server session; extend to per-user later)
-_session_conversation_id = None
+# Per-user conversation IDs, keyed by user_id
+_user_conversations = {}
 
-def _get_or_create_conversation() -> int:
-    global _session_conversation_id
-    if _session_conversation_id is None:
+def _get_or_create_conversation(user_id: int) -> int:
+    """Returns (or lazily creates) a per-user conversation ID."""
+    if user_id not in _user_conversations:
         try:
-            _session_conversation_id = db.create_conversation()
+            _user_conversations[user_id] = db.create_conversation(user_id=user_id)
         except Exception:
-            pass
-    return _session_conversation_id
+            return None
+    return _user_conversations[user_id]
 
 @app.route('/api/upload', methods=['POST'])
 @token_required
@@ -272,10 +272,10 @@ def chat(current_user):
     user_message = data['message']
 
     # Save user message to DB
-    conv_id = _get_or_create_conversation()
+    conv_id = _get_or_create_conversation(current_user['id'])
     try:
         if conv_id:
-            db.save_message(conv_id, 'user', user_message)
+            db.save_message(conv_id, 'human', user_message)
     except Exception as db_err:
         print(f"[DB] Could not save user message: {db_err}")
 
@@ -519,7 +519,7 @@ def get_history(current_user):
     """Returns recent chat messages stored in PostgreSQL."""
     limit = request.args.get('limit', 50, type=int)
     try:
-        messages = db.get_recent_messages(limit=limit)
+        messages = db.get_recent_messages(limit=limit, user_id=current_user['id'])
         return jsonify({'messages': messages, 'count': len(messages)}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -556,7 +556,7 @@ def get_profile(current_user):
         # Aggregate stats for the user
         docs = db.get_documents(user_id=current_user['id'])
         runs = db.get_training_runs()
-        messages = db.get_recent_messages(limit=1000)
+        messages = db.get_recent_messages(limit=1000, user_id=current_user['id'])
 
         return jsonify({
             'user': {
