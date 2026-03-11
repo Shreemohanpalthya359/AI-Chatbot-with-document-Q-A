@@ -200,22 +200,48 @@ sequenceDiagram
 
 ## 🛠️ Setup & Installation
 
-### 1. Backend Setup
+### 1. Backend Configuration
+Create a `.env` file in the `backend/` directory with the following:
+```env
+GROQ_API_KEY=your_groq_api_key_here
+DATABASE_URL=postgresql://user:password@localhost/ai_chatbot_db
+JWT_SECRET=your_random_secret_key
+```
+
+### 2. Execution Instructions
+
+#### 🍎 MacOS / Linux
 ```bash
+# Terminal 1: Backend
 cd backend
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 python3 app.py
-```
-*Note: Ensure PostgreSQL is running and your `.env` contains `GROQ_API_KEY`.*
 
-### 2. Frontend Setup
-```bash
+# Terminal 2: Frontend
 cd frontend
 npm install
 npm run dev
 ```
+
+#### 🪟 Windows (Powershell)
+```powershell
+# Terminal 1: Backend
+cd backend
+python -m venv venv
+.\venv\Scripts\activate
+pip install -r requirements.txt
+python app.py
+
+# Terminal 2: Frontend
+cd frontend
+npm install
+npm run dev
+```
+
+> [!NOTE]
+> Ensure **PostgreSQL** is installed and running before starting the backend server.
 
 ---
 
