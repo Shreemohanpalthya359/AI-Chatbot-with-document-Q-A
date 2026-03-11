@@ -24,13 +24,20 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 
 from sklearn.svm import SVC
-from sklearn.model_selection import train_test_split, cross_val_score, GridSearchCV
+from sklearn.decomposition import PCA
+from sklearn.model_selection import train_test_split, cross_val_score, GridSearchCV, StratifiedKFold
 from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score,
     classification_report, confusion_matrix,
 )
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.pipeline import Pipeline
+
+try:
+    from imblearn.over_sampling import SMOTE
+    SMOTE_AVAILABLE = True
+except ImportError:
+    SMOTE_AVAILABLE = False
 
 try:
     from xgboost import XGBClassifier
@@ -45,7 +52,8 @@ DIVIDER = "=" * 65
 # ─── Data Loading ─────────────────────────────────────────────────────────────
 
 def load_and_embed(upload_folder: str, embeddings: HuggingFaceEmbeddings):
-    splitter = RecursiveCharacterTextSplitter(chunk_size=600, chunk_overlap=100)
+    # Smaller chunks → more training samples per document
+    splitter = RecursiveCharacterTextSplitter(chunk_size=300, chunk_overlap=60)
     X, y = [], []
 
     pdf_files = [f for f in os.listdir(upload_folder) if f.endswith(".pdf")]
@@ -58,7 +66,7 @@ def load_and_embed(upload_folder: str, embeddings: HuggingFaceEmbeddings):
         try:
             docs = PyPDFLoader(filepath).load()
             chunks = splitter.split_documents(docs)
-            texts = [c.page_content.strip() for c in chunks if c.page_content.strip()]
+            texts = [c.page_content.strip() for c in chunks if len(c.page_content.strip()) > 20]
             if not texts:
                 print(f"  ⚠  {pdf_file}: no text extracted, skipping.")
                 continue
@@ -75,14 +83,15 @@ def load_and_embed(upload_folder: str, embeddings: HuggingFaceEmbeddings):
 
 # ─── Model Definitions ────────────────────────────────────────────────────────
 
-def get_svm_pipeline():
+def get_svm_pipeline(n_components: int):
     """
-    SVM with StandardScaler normalization in a Pipeline.
-    Uses GridSearchCV to find the best C and gamma values via cross-validation,
-    preventing manual overfitting through un-regularized high C values.
+    Full pipeline: StandardScaler → PCA (dimensionality reduction) → SVM.
+    PCA reduces 384-dim embeddings to n_components, removing noise and
+    improving SVM's ability to generalize. GridSearchCV finds the best C.
     """
     svm_pipe = Pipeline([
         ('scaler', StandardScaler()),
+        ('pca', PCA(n_components=n_components, random_state=42)),
         ('svm', SVC(
             kernel="rbf",
             class_weight="balanced",
@@ -90,12 +99,12 @@ def get_svm_pipeline():
             random_state=42,
         ))
     ])
-    # Grid of C and gamma to search over: lower C = softer margin = less overfitting
     param_grid = {
-        'svm__C': [0.1, 0.5, 1.0, 5.0],
+        'svm__C': [0.1, 0.5, 1.0, 5.0, 10.0],
         'svm__gamma': ['scale', 'auto'],
     }
-    return GridSearchCV(svm_pipe, param_grid, cv=3, scoring='f1_weighted', n_jobs=-1, refit=True)
+    cv = StratifiedKFold(n_splits=3, shuffle=True, random_state=42)
+    return GridSearchCV(svm_pipe, param_grid, cv=cv, scoring='f1_weighted', n_jobs=-1, refit=True)
 
 
 def get_xgboost(n_classes: int):
@@ -103,12 +112,10 @@ def get_xgboost(n_classes: int):
         return None
     objective = "multi:softprob" if n_classes > 2 else "binary:logistic"
     return XGBClassifier(
-        # Reduced n_estimators and max_depth to prevent overfitting
-        n_estimators=100, max_depth=4, learning_rate=0.05,
+        n_estimators=150, max_depth=4, learning_rate=0.05,
         subsample=0.7, colsample_bytree=0.7,
-        # Added L1/L2 regularization
         reg_alpha=0.1, reg_lambda=1.0,
-        min_child_weight=3,
+        min_child_weight=2,
         objective=objective, eval_metric="mlogloss",
         random_state=42, n_jobs=-1,
     )
@@ -208,13 +215,28 @@ def run_training(upload_folder: str = "uploads"):
         X, y_enc, test_size=0.30, random_state=42, stratify=y_enc
     )
     print(f"\n🔀 Split → Train: {len(X_train)} (70%)  |  Test: {len(X_test)} (30%)")
-    print("   (Larger test set used to better detect overfitting)")
+
+    # ── SMOTE: fix class imbalance on training data only ─────────────────────
+    if SMOTE_AVAILABLE:
+        min_class_count = min(np.bincount(y_train))
+        if min_class_count >= 2:
+            k = min(5, min_class_count - 1)
+            smote = SMOTE(random_state=42, k_neighbors=k)
+            X_train, y_train = smote.fit_resample(X_train, y_train)
+            print(f"   ✅ SMOTE applied → new train size: {len(X_train)} (balanced classes)")
+        else:
+            print("   ⚠️  SMOTE skipped: too few samples in a class (need ≥ 2 per class)")
+    else:
+        print("   ⚠️  SMOTE not installed. Run: pip install imbalanced-learn")
+
+    # PCA components: safe cap so it doesn't exceed sample count or feature dims
+    n_pca = min(50, X.shape[1], len(X_train) - 1)
 
     results = []
 
-    # ── SVM with GridSearchCV ────────────────────────────────────────────────
-    print("\n🔍 Running GridSearchCV to find optimal SVM hyperparameters (this may take a moment)...")
-    svm_result = evaluate("Support Vector Machine (SVM)", get_svm_pipeline(),
+    # ── SVM with GridSearchCV + PCA ──────────────────────────────────────────
+    print(f"\n🔍 Running GridSearchCV+PCA (n={n_pca}) to find optimal SVM hyperparameters...")
+    svm_result = evaluate("Support Vector Machine (SVM)", get_svm_pipeline(n_pca),
                           X_train, X_test, y_train, y_test, X, y_enc, le)
     results.append(svm_result)
 
