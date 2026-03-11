@@ -1,0 +1,26 @@
+# Environment
+.env
+venv/
+node_modules/
+dist/
+build/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Project Specific
+backend/uploads/*
+!backend/uploads/.gitkeep
+backend/exports/*
+!backend/exports/.gitkeep
+backend/embeddings/
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/

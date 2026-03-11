@@ -1,0 +1,15 @@
+langchain-huggingface
+sentence-transformers
+pypdf
+python-dotenv
+tiktoken
+psycopg2-binary
+groq
+langchain-groq
+scikit-learn
+xgboost
+pandas
+numpy
+matplotlib
+seaborn
+openpyxl
