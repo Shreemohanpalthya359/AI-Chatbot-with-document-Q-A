@@ -55,6 +55,22 @@
 - **Performance Benchmarking**: Compares `SVM` and `XGBoost` model performance across your document set.
 - **Live Metrics**: Monitors accuracy, F1-scores, and sample distributions via `Recharts` visualizations.
 - **Document Tracking**: Real-time management of uploaded knowledge bases.
+- **User Scoped**: Each user sees their own personalized metrics and interaction history.
+
+![Analytics Dashboard](frontend/src/assets/screenshots/analytics_dashboard.png)
+*The centralized hub for monitoring your ML model performance, total interactions, and recently uploaded documents.*
+
+### 4. 🧑‍💻 User Profiles & Security
+- **Personalized Accounts**: Edit your display name and update your customized avatar.
+- **Account Stats**: View your all-time metrics including total documents, questions asked, and best ML accuracy.
+- **Password Management**: Securely change your password within the app settings.
+
+<div style="display: flex; gap: 10px; margin-bottom: 20px;">
+  <img src="frontend/src/assets/screenshots/profile_overview.png" width="32%" alt="Profile Overview" />
+  <img src="frontend/src/assets/screenshots/profile_settings.png" width="32%" alt="Profile Settings" />
+  <img src="frontend/src/assets/screenshots/profile_security.png" width="32%" alt="Profile Security" />
+</div>
+*The dedicated User Profile page offering a bird's-eye view of your account activity, customizable display names, and password management capabilities.*
 
 ### 5. 🔐 Secure Access
 - **JWT Authentication**: Full user registration and login system.
