@@ -1,11 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Image as ImageIcon, Send, ArrowLeft, Mic, MicOff, Volume2, Square, LogOut } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
 const API = 'http://127.0.0.1:5001';
 
 function ChatWorkspace({ onLogout }) {
+  const navigate = useNavigate();
   const token = localStorage.getItem('token');
   const [messages, setMessages] = useState([
     { id: 1, role: 'bot', text: 'Hello! Upload a PDF to start asking questions, or attach an image to analyze it.' }
