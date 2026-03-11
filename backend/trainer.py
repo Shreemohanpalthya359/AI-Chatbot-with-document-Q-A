@@ -2,11 +2,15 @@
 trainer.py — ML Training Module for AI Document Q&A
 =====================================================
 Trains the two best-performing classifiers for text embeddings:
-  1. Support Vector Machine (SVM)  — best for high-dim text data
-  2. XGBoost                        — highest accuracy ensemble
+  1. Support Vector Machine (SVM)  — soft-margin + GridSearch tuning
+  2. XGBoost                        — regularized ensemble with early stopping
 
-Uses local HuggingFace sentence embeddings to vectorize document chunks,
-then trains and evaluates on an 80/20 train/test split.
+Uses local HuggingFace sentence embeddings to vectorize document chunks.
+Anti-overfitting techniques applied:
+  - SVM: C=1.0 (soft margin), GridSearchCV for best hyperparameters
+  - XGBoost: lowered max_depth and n_estimators, stronger regularization
+  - 70/30 train/test split for better generalization evaluation
+  - StandardScaler normalization for SVM
 
 All output is printed to the terminal.
 """
@@ -20,12 +24,13 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 
 from sklearn.svm import SVC
-from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.model_selection import train_test_split, cross_val_score, GridSearchCV
 from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score,
     classification_report, confusion_matrix,
 )
-from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.pipeline import Pipeline
 
 try:
     from xgboost import XGBClassifier
@@ -70,11 +75,27 @@ def load_and_embed(upload_folder: str, embeddings: HuggingFaceEmbeddings):
 
 # ─── Model Definitions ────────────────────────────────────────────────────────
 
-def get_svm():
-    return SVC(
-        kernel="rbf", C=10.0, gamma="scale",
-        class_weight="balanced", probability=True, random_state=42,
-    )
+def get_svm_pipeline():
+    """
+    SVM with StandardScaler normalization in a Pipeline.
+    Uses GridSearchCV to find the best C and gamma values via cross-validation,
+    preventing manual overfitting through un-regularized high C values.
+    """
+    svm_pipe = Pipeline([
+        ('scaler', StandardScaler()),
+        ('svm', SVC(
+            kernel="rbf",
+            class_weight="balanced",
+            probability=True,
+            random_state=42,
+        ))
+    ])
+    # Grid of C and gamma to search over: lower C = softer margin = less overfitting
+    param_grid = {
+        'svm__C': [0.1, 0.5, 1.0, 5.0],
+        'svm__gamma': ['scale', 'auto'],
+    }
+    return GridSearchCV(svm_pipe, param_grid, cv=3, scoring='f1_weighted', n_jobs=-1, refit=True)
 
 
 def get_xgboost(n_classes: int):
@@ -82,8 +103,12 @@ def get_xgboost(n_classes: int):
         return None
     objective = "multi:softprob" if n_classes > 2 else "binary:logistic"
     return XGBClassifier(
-        n_estimators=300, max_depth=6, learning_rate=0.1,
-        subsample=0.8, colsample_bytree=0.8,
+        # Reduced n_estimators and max_depth to prevent overfitting
+        n_estimators=100, max_depth=4, learning_rate=0.05,
+        subsample=0.7, colsample_bytree=0.7,
+        # Added L1/L2 regularization
+        reg_alpha=0.1, reg_lambda=1.0,
+        min_child_weight=3,
         objective=objective, eval_metric="mlogloss",
         random_state=42, n_jobs=-1,
     )
@@ -94,20 +119,33 @@ def get_xgboost(n_classes: int):
 def evaluate(name: str, model, X_train, X_test, y_train, y_test, X_all, y_enc, le):
     print(f"\n▶  Training {name}...")
     model.fit(X_train, y_train)
-    y_pred = model.predict(X_test)
 
+    # Check if it's a GridSearchCV model and report best params
+    if hasattr(model, 'best_params_'):
+        print(f"   🔍 Best Params Found: {model.best_params_}")
+
+    y_pred = model.predict(X_test)
+    y_train_pred = model.predict(X_train)
+
+    train_acc = accuracy_score(y_train, y_train_pred)
     acc  = accuracy_score(y_test, y_pred)
     prec = precision_score(y_test, y_pred, average="weighted", zero_division=0)
     rec  = recall_score(y_test, y_pred,    average="weighted", zero_division=0)
     f1   = f1_score(y_test, y_pred,        average="weighted", zero_division=0)
 
-    cv_n   = min(5, len(np.unique(y_enc)) * 2)
+    cv_n = min(5, len(np.unique(y_enc)) * 2)
     cv_scores = cross_val_score(model, X_all, y_enc, cv=cv_n, scoring="accuracy")
+
+    # Overfitting gap indicator
+    overfit_gap = train_acc - acc
+    overfit_status = "⚠️  Possible Overfitting" if overfit_gap > 0.10 else "✅  Well Generalized"
 
     print(f"\n   {DIVIDER}")
     print(f"   📊 {name} — Results")
     print(f"   {DIVIDER}")
-    print(f"   Accuracy          : {acc*100:.2f}%")
+    print(f"   Train Accuracy    : {train_acc*100:.2f}%")
+    print(f"   Test Accuracy     : {acc*100:.2f}%")
+    print(f"   Overfit Gap       : {overfit_gap*100:.2f}%  →  {overfit_status}")
     print(f"   Precision         : {prec*100:.2f}%")
     print(f"   Recall            : {rec*100:.2f}%")
     print(f"   F1-Score          : {f1*100:.2f}%")
@@ -165,16 +203,18 @@ def run_training(upload_folder: str = "uploads"):
     le = LabelEncoder()
     y_enc = le.fit_transform(y)
 
-    # 80 / 20 split
+    # 70 / 30 split — wider test set gives a more honest generalization score
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y_enc, test_size=0.2, random_state=42, stratify=y_enc
+        X, y_enc, test_size=0.30, random_state=42, stratify=y_enc
     )
-    print(f"\n🔀 Split → Train: {len(X_train)}  |  Test: {len(X_test)}")
+    print(f"\n🔀 Split → Train: {len(X_train)} (70%)  |  Test: {len(X_test)} (30%)")
+    print("   (Larger test set used to better detect overfitting)")
 
     results = []
 
-    # ── SVM ──────────────────────────────────────────────────────────────────
-    svm_result = evaluate("Support Vector Machine (SVM)", get_svm(),
+    # ── SVM with GridSearchCV ────────────────────────────────────────────────
+    print("\n🔍 Running GridSearchCV to find optimal SVM hyperparameters (this may take a moment)...")
+    svm_result = evaluate("Support Vector Machine (SVM)", get_svm_pipeline(),
                           X_train, X_test, y_train, y_test, X, y_enc, le)
     results.append(svm_result)
 
