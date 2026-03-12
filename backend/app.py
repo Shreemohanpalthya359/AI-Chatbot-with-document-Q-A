@@ -185,6 +185,11 @@ def upload_file(current_user):
                     print(f"[Upload] OCR error: {ocr_err}")
                     return jsonify({'error': f'OCR failed for "{filename}": {str(ocr_err)}'}), 400
 
+            # Attach metadata to each chunk to partition by user
+            for chunk in chunks:
+                chunk.metadata['user_id'] = current_user['id']
+                chunk.metadata['source_filename'] = filename
+
             # Embed and store
             global vector_store
             if vector_store is None:
@@ -228,7 +233,8 @@ def _get_prompt():
     if _prompt is None:
         _prompt = ChatPromptTemplate.from_messages([
             ("system",
-             "You are a professional Data Analyst AI. Your task is to extract data from provided PDF context and provide insights.\n\n"
+             "You are a professional Data Analyst AI. Your task is to extract data from provided PDF context and provide insights.\n"
+             "IMPORTANT: If the provided context does not contain the answer, you MUST say 'I cannot answer this based on the provided document'. Do not hallucinate external knowledge.\n\n"
              "DATA VISUALIZATION & FILE GENERATION:\n"
              "- If the user asks for a plot, chart, or graph, you MUST generate Python code using matplotlib or seaborn.\n"
              "- If the user asks for a CSV or Excel file, you MUST generate Python code using pandas.\n"
@@ -238,6 +244,7 @@ def _get_prompt():
              "CONSTRAINTS:\n"
              "- Do not use any external APIs or sensitive libraries.\n"
              "- Only use pandas, numpy, matplotlib, seaborn, and openpyxl.\n\n"
+             "CHAT HISTORY:\n{chat_history}\n\n"
              "CONTEXT:\n{context}"),
             ("human", "{input}"),
         ])
@@ -311,12 +318,32 @@ def chat(current_user):
         print(f"[DB] Could not save user message: {db_err}")
 
     try:
+        # Filter strictly to the most recently uploaded document by this user
+        filter_dict = {"user_id": current_user['id']}
+        docs = db.get_documents(user_id=current_user['id'])
+        if docs:
+            latest_filename = docs[0]['filename']
+            filter_dict = {
+                "$and": [
+                    {"user_id": current_user['id']},
+                    {"source_filename": latest_filename}
+                ]
+            }
+
         llm = _get_llm()
-        retriever = vector_store.as_retriever(search_kwargs={"k": 3})
+        retriever = vector_store.as_retriever(search_kwargs={"k": 5, "filter": filter_dict})
         question_answer_chain = create_stuff_documents_chain(llm, _get_prompt())
         rag_chain = create_retrieval_chain(retriever, question_answer_chain)
 
-        response = rag_chain.invoke({"input": user_message})
+        # Retrieve chat history for context
+        history = db.get_recent_messages(limit=6, user_id=current_user['id'])
+        history.reverse()
+        history_text = "\n".join([f"{m['role']}: {m['content']}" for m in history])
+
+        response = rag_chain.invoke({
+            "input": user_message,
+            "chat_history": history_text
+        })
         answer = response['answer']
         
         # Check for code block in response (flexible matching)
@@ -369,7 +396,7 @@ def chat(current_user):
             'response': answer,
             'plot_url': plot_url,
             'file_url': file_url,
-            'sources': [doc.metadata.get('source', 'Unknown') for doc in response.get('context', [])]
+            'sources': list(set([doc.metadata.get('source_filename', doc.metadata.get('source', 'Unknown')) for doc in response.get('context', [])]))
         }), 200
 
     except Exception as e:
